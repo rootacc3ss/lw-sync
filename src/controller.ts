@@ -76,7 +76,6 @@ export const DEFAULT_SETTINGS: LwsSettings = {
 
 interface Stack {
   prefixed: PrefixedBackend;
-  s3: S3Backend;
   subkeys: Subkeys;
   objects: ObjectStore;
   manifests: ManifestStore;
@@ -144,10 +143,20 @@ export class Controller {
       logError("testConnection", e);
       throw e;
     }
-    const conditionalPut = await backend.probeConditionalPut();
+    // Probe INSIDE our vault prefix, with a per-device key: respects IAM policies
+    // scoped to lwsync/<vault>/* and no two devices ever race the same probe key. A
+    // failing probe degrades the verdict only — it never masks a working connection.
+    let conditionalPut = false;
+    try {
+      conditionalPut = await backend.probeConditionalPut(
+        `${this.prefix()}/meta/.lws-cas-probe-${this.settings.deviceName || "default"}`,
+      );
+    } catch (e) {
+      logError("conditional-PUT probe", e);
+    }
     log(
       "info",
-      `testConnection ok — bucket=${this.settings.s3.bucket}, conditional PUT ${conditionalPut ? "honored" : "IGNORED (manifest CAS falls back to recompute)"}`,
+      `testConnection ok — bucket=${this.settings.s3.bucket}, conditional PUT ${conditionalPut ? "honored" : "not verified (ignored, unreadable, or probe denied — sync still works)"}`,
     );
     return { conditionalPut };
   }
@@ -240,7 +249,6 @@ export class Controller {
     const engine = new SyncEngine(this.settings.deviceName, fs, objects, manifests, index);
     this.stack = {
       prefixed,
-      s3: this.rawBackend(),
       subkeys,
       objects,
       manifests,

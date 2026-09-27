@@ -1,7 +1,9 @@
 // First-run / connect flow: one screen of connection fields (+ Test, + import from a
 // setup file), then what's in the bucket decides: new vault -> passphrase; existing ->
 // passphrase + restore choice. Both paths end at Preferences, then a short "You're all
-// set" orientation. Far slimmer than the reference's 8-screen wizard.
+// set" orientation. Custom-only by design: any S3-compatible provider works — enter
+// its endpoint/credentials and pick an addressing style; a successful connection test
+// is required before advancing, and again before finishing.
 
 import { App, Modal, Notice, Platform, Setting } from "obsidian";
 import type { Controller, LwsSettings } from "../controller";
@@ -11,22 +13,11 @@ import { formatHeaderLines, parseHeaderLines } from "./custom-headers";
 import { openImportSetupModal } from "./modals";
 import { renderTutorialContent } from "./tutorial";
 
-const PRESETS: Record<string, { endpoint: string; forcePathStyle: boolean; region?: string }> = {
-  "AWS S3": { endpoint: "https://s3.amazonaws.com", forcePathStyle: false },
-  "Cloudflare R2": {
-    endpoint: "https://<account>.r2.cloudflarestorage.com",
-    forcePathStyle: true,
-    region: "auto",
-  },
-  Wasabi: { endpoint: "https://s3.wasabisys.com", forcePathStyle: true },
-  Filebase: { endpoint: "https://s3.filebase.com", forcePathStyle: true },
-  "iDrive e2": { endpoint: "https://<region>.idrivee2.com", forcePathStyle: true },
-  "MinIO (local)": { endpoint: "http://127.0.0.1:9000", forcePathStyle: true },
-  // Blank slate: no autofill — every field is entered by hand for any provider.
-  "Custom (any S3-compatible)": { endpoint: "", forcePathStyle: true, region: "" },
-};
-
 export class SetupWizard extends Modal {
+  /** Renders started while an earlier one are aborted at their next await point. */
+  private renderSeq = 0;
+  private testStatusEl: HTMLElement | null = null;
+
   constructor(
     app: App,
     private controller: Controller,
@@ -37,6 +28,7 @@ export class SetupWizard extends Modal {
   }
 
   async onOpen(): Promise<void> {
+    const seq = ++this.renderSeq;
     const { contentEl, settings } = { contentEl: this.contentEl, settings: this.settings };
     contentEl.empty();
     contentEl.createEl("h2", { text: "Little Wooly Sync — setup" });
@@ -52,6 +44,7 @@ export class SetupWizard extends Modal {
 
     // Moving devices? If a setup file sits in the vault root, offer to load it.
     if (await this.app.vault.adapter.exists(SETUP_FILE)) {
+      if (seq !== this.renderSeq) return; // superseded by a newer render
       new Setting(contentEl)
         .setName("Import setup from file")
         .setDesc(`Found ${SETUP_FILE} in the vault root — loads connection + preferences.`)
@@ -65,19 +58,6 @@ export class SetupWizard extends Modal {
         );
     }
 
-    new Setting(contentEl).setName("Provider preset").addDropdown((d) => {
-      d.addOption("", "— pick to autofill —");
-      for (const k of Object.keys(PRESETS)) d.addOption(k, k);
-      d.onChange((v) => {
-        const p = PRESETS[v];
-        if (!p) return;
-        settings.s3.endpoint = p.endpoint;
-        settings.s3.forcePathStyle = p.forcePathStyle;
-        if (p.region !== undefined) settings.s3.region = p.region;
-        void this.onOpen(); // re-render with autofilled values
-      });
-    });
-
     const text = (name: string, get: () => string, set: (v: string) => void, ph = "") =>
       new Setting(contentEl).setName(name).addText((t) => {
         t.setPlaceholder(ph).setValue(get());
@@ -88,13 +68,15 @@ export class SetupWizard extends Modal {
       "Endpoint",
       () => settings.s3.endpoint,
       (v) => (settings.s3.endpoint = v),
-      "https://…",
-    );
+      "https://s3.amazonaws.com",
+    ).setDesc("Your provider's S3 endpoint, including the scheme (https:// or http://).");
     text(
       "Region",
       () => settings.s3.region,
       (v) => (settings.s3.region = v),
       "us-east-1",
+    ).setDesc(
+      "AWS/Wasabi need the exact region; Cloudflare R2 uses auto; most others accept anything.",
     );
     text(
       "Access key ID",
@@ -124,6 +106,8 @@ export class SetupWizard extends Modal {
       () => settings.vaultName || this.app.vault.getName(),
       (v) => (settings.vaultName = v),
       "stored under lwsync/<name>/",
+    ).setDesc(
+      "Letters, numbers, dots, dashes, and underscores only — it becomes part of the S3 key prefix.",
     );
     text(
       "Device name",
@@ -142,46 +126,85 @@ export class SetupWizard extends Modal {
         t.inputEl.rows = 2;
       });
 
+    this.testStatusEl = contentEl.createEl("p", {
+      text: "Connection not tested yet — a successful test is required to continue.",
+      cls: "setting-item-description",
+    });
+
+    const runTest = async (): Promise<boolean> => {
+      const err = this.normalizeInputs();
+      if (err) {
+        this.setTestStatus(`⛔ ${err}`, false);
+        return false;
+      }
+      try {
+        const { conditionalPut } = await this.controller.testConnection();
+        this.setTestStatus(
+          `✅ Connected to bucket${conditionalPut ? "" : " (conditional PUT ignored — manifest updates fall back to recompute)"}`,
+          true,
+        );
+        return true;
+      } catch (e) {
+        this.setTestStatus(`⛔ ${(e as Error).message}`, false);
+        return false;
+      }
+    };
+
     new Setting(contentEl).addButton((b) =>
-      b.setButtonText("Test connection").onClick(async () => {
-        try {
-          const { conditionalPut } = await this.controller.testConnection();
-          new Notice("✅ Connected to bucket.");
-          if (!conditionalPut)
-            new Notice(
-              "⚠ This bucket ignores conditional create (If-None-Match). Sync still works, but manifest updates rely on recompute rather than a strict write lock.",
-              8000,
-            );
-        } catch (e) {
-          new Notice(`⛔ ${(e as Error).message}`);
-        }
-      }),
+      b.setButtonText("Test connection").onClick(async () => void (await runTest())),
     );
 
     new Setting(contentEl).addButton((b) =>
       b
-        .setButtonText("Continue")
+        .setButtonText("Test & continue")
         .setCta()
-        .onClick(() => this.continue()),
+        .onClick(async () => {
+          if (!(await runTest())) return;
+          try {
+            const exists = await this.controller.remoteExists();
+            if (exists) this.renderConnectExisting();
+            else this.renderNewVault();
+          } catch (e) {
+            this.setTestStatus(`⛔ ${(e as Error).message}`, false);
+          }
+        }),
     );
   }
 
-  private async continue(): Promise<void> {
+  private setTestStatus(text: string, ok: boolean): void {
+    this.testStatusEl?.setText(text);
+    if (this.testStatusEl)
+      this.testStatusEl.style.color = ok ? "var(--text-success)" : "var(--text-error)";
+  }
+
+  /**
+   * Trim + normalize everything the user typed, in place. Returns an error string, or
+   * null when the inputs are well-formed enough to attempt a connection.
+   */
+  private normalizeInputs(): string | null {
     const s = this.settings;
-    if (!s.vaultName) s.vaultName = this.app.vault.getName();
-    if (!s.s3.endpoint || !s.s3.bucket || !s.deviceName) {
-      new Notice("⛔ Endpoint, bucket, and device name are required.");
-      return;
-    }
-    try {
-      await this.controller.testConnection();
-    } catch (e) {
-      new Notice(`⛔ Connection failed: ${(e as Error).message}`);
-      return;
-    }
-    const exists = await this.controller.remoteExists();
-    if (exists) this.renderConnectExisting();
-    else this.renderNewVault();
+    s.s3.endpoint = s.s3.endpoint.trim().replace(/\/+$/, "");
+    s.s3.region = s.s3.region.trim();
+    s.s3.accessKeyId = s.s3.accessKeyId.trim();
+    s.s3.bucket = s.s3.bucket.trim();
+    s.deviceName = s.deviceName.trim();
+    if (!s.vaultName) s.vaultName = this.app.vault.getName().trim();
+    else s.vaultName = s.vaultName.trim();
+    const secret = readS3Secret(this.app).trim();
+    if (secret) writeS3Secret(this.app, secret);
+
+    if (!/^https?:\/\//i.test(s.s3.endpoint))
+      return "Endpoint must start with http:// or https:// (e.g. https://s3.amazonaws.com).";
+    if (!s.s3.bucket) return "Bucket is required.";
+    if (!s.deviceName) return "Device name is required.";
+    if (!/^[A-Za-z0-9._-]+$/.test(s.vaultName))
+      return "Vault name may only contain letters, numbers, dots, dashes, and underscores.";
+    if (!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(s.s3.bucket))
+      new Notice(
+        "⚠ That bucket name looks unusual for S3 (lowercase letters, numbers, dots, dashes; 3–63 chars). Testing anyway.",
+        8000,
+      );
+    return null;
   }
 
   private renderNewVault(): void {
@@ -216,7 +239,6 @@ export class SetupWizard extends Modal {
           }
           try {
             await this.controller.initNewVault(pass);
-            this.settings.configured = true;
             this.renderPreferences();
           } catch (e) {
             new Notice(`⛔ ${(e as Error).message}`);
@@ -240,13 +262,16 @@ export class SetupWizard extends Modal {
         .setButtonText("Connect")
         .setCta()
         .onClick(async () => {
+          if (!pass) {
+            new Notice("⛔ Enter the passphrase.");
+            return;
+          }
           try {
             const ok = await this.controller.connectExisting(pass);
             if (!ok) {
               new Notice("⛔ Wrong passphrase.");
               return;
             }
-            this.settings.configured = true;
             this.renderRestoreChoice();
           } catch (e) {
             new Notice(`⛔ ${(e as Error).message}`);
@@ -348,7 +373,23 @@ export class SetupWizard extends Modal {
     );
   }
 
+  /**
+   * Final gate: re-verify the connection before declaring the plugin configured, so
+   * "done" can never be reached with a broken config. `configured` is only set (and
+   * persisted via onDone) here — backing out earlier leaves a consistent "not
+   * configured" state that re-running setup handles cleanly.
+   */
   private async finish(msg: string): Promise<void> {
+    try {
+      await this.controller.testConnection();
+    } catch (e) {
+      new Notice(
+        `⛔ Connection failed: ${(e as Error).message} — check Settings → connection, or re-run setup.`,
+        10000,
+      );
+      return;
+    }
+    this.settings.configured = true;
     new Notice(msg);
     this.close();
     await this.onDone();

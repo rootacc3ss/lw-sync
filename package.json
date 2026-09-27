@@ -1,6 +1,6 @@
 {
   "name": "littlewooly-sync",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Real-time, end-to-end encrypted backup of ALL files in an Obsidian vault to any S3-compatible bucket. Provable coverage, no silent caps.",
   "main": "main.js",
   "type": "module",
@@ -21,7 +21,14 @@
     "verify:bundle": "node scripts/verify-bundle.mjs",
     "version": "node version-bump.mjs && git add manifest.json versions.json"
   },
-  "keywords": ["obsidian", "sync", "backup", "s3", "encryption", "e2ee"],
+  "keywords": [
+    "obsidian",
+    "sync",
+    "backup",
+    "s3",
+    "encryption",
+    "e2ee"
+  ],
   "author": "Little Wooly",
   "license": "MIT",
   "dependencies": {
