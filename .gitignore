@@ -1,0 +1,46 @@
+# dependencies
+node_modules/
+
+# build output
+main.js
+main.js.map
+dist/
+*.tsbuildinfo
+
+# secrets & local config — NEVER commit
+.env
+.env.*
+.test.env
+*.local
+data.json
+
+# test artifacts (the test SOURCES are public; only artifacts stay local)
+coverage/
+.vitest/
+.minio-data/
+test/.vault-*/
+
+# local vault / plugin-run artifacts (if the repo itself is loaded as a test vault)
+littlewooly-sync-setup.json
+littlewooly-sync-debug.md
+
+# editor / OS
+.DS_Store
+*.log
+*.cpuprofile
+*.heapsnapshot
+
+# local-only AI assistant state
+.claude/
+.opencode/
+.gemini/
+.cursor/
+.windsurf/
+.aider*
+.codeium/
+.continue/
+.buster/
+.agents/
+
+# local-only reference material — study it, never ship it
+archive/

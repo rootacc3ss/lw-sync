@@ -1,0 +1,4 @@
+/* Little Wooly Sync — minimal styles. The UI uses Obsidian's native Setting/Modal chrome. */
+.littlewooly-sync-status {
+  cursor: default;
+}
