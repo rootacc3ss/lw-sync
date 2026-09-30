@@ -1,6 +1,6 @@
 {
   "name": "littlewooly-sync",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Real-time, end-to-end encrypted backup of ALL files in an Obsidian vault to any S3-compatible bucket. Provable coverage, no silent caps.",
   "main": "main.js",
   "type": "module",

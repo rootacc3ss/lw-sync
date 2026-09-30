@@ -70,16 +70,17 @@ provider below (any other S3-compatible provider works too).
 
 ## Phase 2 — Connect and pick your preferences
 
-1. Open **Settings → Little Wooly Sync** (or click the sheep ribbon) → the setup wizard.
-2. Optionally pick a **provider preset** — it autofills endpoint and addressing.
-3. Fill in: endpoint, region, **access key ID**, **secret access key**, bucket name.
+1. Open **Settings → Little Wooly Sync** (or click the elephant ribbon) → the setup wizard.
+2. Fill in: endpoint, region, **access key ID**, **secret access key**, bucket name, and
+   pick path-style or virtual-hosted addressing (path-style works with most
+   S3-compatible providers; virtual-hosted is for AWS).
    The secret is stored in your device's OS-backed secret storage — never in a
    plaintext config file, never uploaded.
-4. **Vault name** (default: your vault's name) — one bucket can hold many vaults; each
+3. **Vault name** (default: your vault's name) — one bucket can hold many vaults; each
    lives under `lwsync/<vault name>/`.
-5. **Device name** — `desktop`, `laptop`, `pixel`, … — keeps each device's workspace
+4. **Device name** — `desktop`, `laptop`, `pixel`, … — keeps each device's workspace
    config separate. Take two seconds to make these distinct.
-6. Hit **Test connection**. You should see ✅ Connected.
+5. Hit **Test connection**. You should see ✅ Connected.
    - If you see the ⚠ *conditional create* warning: sync still works fully; the
      warning only means the provider ignores a write-lock the manifest uses as an
      optimization, so it falls back to recompute. No action needed.
@@ -113,9 +114,9 @@ install).
 
 ## Phase 3 — Get fully synced, and prove it
 
-1. **Watch the status bar**: 🐑 ready · 🔄 syncing · ✅ done · ⚠️ conflict copies kept ·
-   ⛔ error. First sync of a big vault takes a while (every file is encrypted and
-   uploaded).
+1. **Watch the status bar**: 🐘 idle/ready · 🔄 syncing (with queued count) · ✅ last-sync
+   metrics · ⛔ error. Click it to sync now; hover for details. First sync of a big vault
+   takes a while (every file is encrypted and uploaded).
 2. When it finishes, run **“Little Wooly Sync: Coverage audit”** (command palette).
    It cross-checks three independent sources — your live vault, the sync manifest, and
    the actual bucket listing — and reports:

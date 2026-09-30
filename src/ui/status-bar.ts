@@ -46,7 +46,7 @@ export class StatusBar {
     this.last = { status, configured };
     if (this.override !== null) return; // sticky until cleared
     const now = Date.now();
-    let icon = "🐑";
+    let icon = "🐘";
     let line: string;
 
     if (!configured) {

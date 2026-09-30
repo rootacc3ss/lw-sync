@@ -46,7 +46,7 @@ export default class LittleWoolySyncPlugin extends Plugin {
     this.renderStatus();
 
     this.addSettingTab(new LwsSettingTab(this.app, this));
-    this.addRibbonIcon("sheep", "Little Wooly Sync", () => this.onStatusClick());
+    this.addRibbonIcon("elephant", "Little Wooly Sync", () => this.onStatusClick());
 
     this.addCommand({
       id: "lws-setup",

@@ -5,7 +5,7 @@
 import { App, Modal, Setting } from "obsidian";
 
 export function renderTutorialContent(el: HTMLElement): void {
-  el.createEl("h2", { text: "You're all set 🐑" });
+  el.createEl("h2", { text: "You're all set 🐘" });
   el.createEl("p", {
     text: "Your vault is being backed up, end-to-end encrypted, to your own bucket.",
     cls: "setting-item-description",
@@ -19,7 +19,7 @@ export function renderTutorialContent(el: HTMLElement): void {
   };
   li(
     "Watch the status bar",
-    "🐑 idle, 🔄 syncing (with queued count), ✅ last-sync metrics, ⛔ error. Click it to sync now; hover for details. Auto-sync modes: Periodic (stable, lowest load) or Live (syncs a few seconds after you stop typing) — see Settings.",
+    "🐘 idle, 🔄 syncing (with queued count), ✅ last-sync metrics, ⛔ error. Click it to sync now; hover for details. Auto-sync modes: Periodic (stable, lowest load) or Live (syncs a few seconds after you stop typing) — see Settings.",
   );
   li(
     "Prove your coverage",
