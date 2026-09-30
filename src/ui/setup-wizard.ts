@@ -320,12 +320,36 @@ export class SetupWizard extends Modal {
       );
     new Setting(contentEl)
       .setName("Sync on save (debounced)")
+      .setDesc("Sync shortly after files change. Works in every auto-sync mode.")
       .addToggle((t) => t.setValue(settings.syncOnSave).onChange((v) => (settings.syncOnSave = v)));
-    new Setting(contentEl).setName("Periodic sync interval (seconds, 0 = off)").addText((t) =>
-      t.setValue(String(settings.syncIntervalSec)).onChange((v) => {
-        settings.syncIntervalSec = Math.max(0, parseInt(v || "0", 10) || 0);
-      }),
-    );
+    new Setting(contentEl)
+      .setName("Auto-sync")
+      .setDesc(
+        "How this device keeps itself updated in the background. Periodic is the stable, lowest-load option (fewest S3 calls); Live keeps you persistently updated by syncing a few seconds after you stop typing.",
+      )
+      .addDropdown((d) => {
+        d.addOption("off", "Off — manual sync only");
+        d.addOption("periodic", "Periodic — every N seconds (stable, lowest load)");
+        d.addOption("live", "Live — sync a few seconds after you stop typing");
+        d.setValue(settings.autoSyncMode);
+        d.onChange((v) => (settings.autoSyncMode = v as typeof settings.autoSyncMode));
+      });
+    new Setting(contentEl)
+      .setName("Periodic interval (seconds)")
+      .setDesc("Used when Auto-sync is Periodic.")
+      .addText((t) =>
+        t.setValue(String(settings.autoSyncIntervalSec)).onChange((v) => {
+          settings.autoSyncIntervalSec = Math.max(15, parseInt(v || "0", 10) || 300);
+        }),
+      );
+    new Setting(contentEl)
+      .setName("Live idle delay (seconds)")
+      .setDesc("Used when Auto-sync is Live: seconds of quiet after changes before syncing.")
+      .addText((t) =>
+        t.setValue(String(settings.liveIdleSec)).onChange((v) => {
+          settings.liveIdleSec = Math.min(300, Math.max(2, parseInt(v || "0", 10) || 5));
+        }),
+      );
 
     const days = this.controller.ready ? this.controller.retentionDays : 0;
     let retention = days;

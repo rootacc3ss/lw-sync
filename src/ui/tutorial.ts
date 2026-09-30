@@ -19,7 +19,7 @@ export function renderTutorialContent(el: HTMLElement): void {
   };
   li(
     "Watch the status bar",
-    "🐑 idle, 🔄 syncing, ✅ done, ⚠️ conflict copies kept, ⛔ error. Hover/tap commands: “Sync now”, “Coverage audit”, “Repair”.",
+    "🐑 idle, 🔄 syncing (with queued count), ✅ last-sync metrics, ⛔ error. Click it to sync now; hover for details. Auto-sync modes: Periodic (stable, lowest load) or Live (syncs a few seconds after you stop typing) — see Settings.",
   );
   li(
     "Prove your coverage",

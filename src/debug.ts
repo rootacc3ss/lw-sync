@@ -31,7 +31,7 @@ export async function buildDebugReport(
   L(`- addressing: ${settings.s3.forcePathStyle ? "path-style" : "virtual-hosted"}`);
   L(`- accessKeyId: ${redact(settings.s3.accessKeyId)}`);
   L(
-    `- triggers: onStart=${settings.syncOnStart} onSave=${settings.syncOnSave} interval=${settings.syncIntervalSec}s`,
+    `- triggers: onStart=${settings.syncOnStart} onSave=${settings.syncOnSave} autoSync=${settings.autoSyncMode}${settings.autoSyncMode === "periodic" ? `(${settings.autoSyncIntervalSec}s)` : settings.autoSyncMode === "live" ? `(${settings.liveIdleSec}s idle)` : ""} notices=${settings.syncNotices} statusBar=${settings.showStatusBar}`,
   );
   L("");
 

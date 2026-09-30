@@ -87,18 +87,83 @@ export class LwsSettingTab extends PluginSettingTab {
         await this.plugin.saveSettings();
       }),
     );
-    new Setting(containerEl).setName("Sync on save (debounced)").addToggle((t) =>
-      t.setValue(s.syncOnSave).onChange(async (v) => {
-        s.syncOnSave = v;
-        await this.plugin.saveSettings();
-      }),
-    );
-    new Setting(containerEl).setName("Periodic sync interval (seconds, 0 = off)").addText((t) =>
-      t.setValue(String(s.syncIntervalSec)).onChange(async (v) => {
-        s.syncIntervalSec = Math.max(0, parseInt(v || "0", 10) || 0);
-        await this.plugin.saveSettings();
-      }),
-    );
+    new Setting(containerEl)
+      .setName("Sync on save (debounced)")
+      .setDesc("Sync shortly after files change. Works in every auto-sync mode.")
+      .addToggle((t) =>
+        t.setValue(s.syncOnSave).onChange(async (v) => {
+          s.syncOnSave = v;
+          await this.plugin.saveSettings();
+          this.plugin.applyTriggerSettings();
+        }),
+      );
+    new Setting(containerEl)
+      .setName("Auto-sync")
+      .setDesc("How this device keeps itself updated in the background.")
+      .addDropdown((d) => {
+        d.addOption("off", "Off — manual sync only");
+        d.addOption(
+          "periodic",
+          "Periodic — every N seconds (stable, lowest load, fewest S3 calls)",
+        );
+        d.addOption("live", "Live — sync a few seconds after you stop typing");
+        d.setValue(s.autoSyncMode);
+        d.onChange(async (v) => {
+          s.autoSyncMode = v as typeof s.autoSyncMode;
+          await this.plugin.saveSettings();
+          this.plugin.applyTriggerSettings();
+        });
+      });
+    new Setting(containerEl)
+      .setName("Periodic interval (seconds)")
+      .setDesc("Used when Auto-sync is Periodic. Minimum 15s — syncs are throttled anyway.")
+      .addText((t) =>
+        t.setValue(String(s.autoSyncIntervalSec)).onChange(async (v) => {
+          s.autoSyncIntervalSec = Math.max(15, parseInt(v || "0", 10) || 300);
+          await this.plugin.saveSettings();
+          this.plugin.applyTriggerSettings();
+        }),
+      );
+    new Setting(containerEl)
+      .setName("Live idle delay (seconds)")
+      .setDesc(
+        "Used when Auto-sync is Live: seconds of quiet after changes before syncing (2–300).",
+      )
+      .addText((t) =>
+        t.setValue(String(s.liveIdleSec)).onChange(async (v) => {
+          s.liveIdleSec = Math.min(300, Math.max(2, parseInt(v || "0", 10) || 5));
+          await this.plugin.saveSettings();
+          this.plugin.applyTriggerSettings();
+        }),
+      );
+
+    // ---- Status & notifications ----
+    new Setting(containerEl)
+      .setName("Show status bar item")
+      .setDesc(
+        "Live sync status, queue depth, and metrics in the bottom bar. Click it to sync now.",
+      )
+      .addToggle((t) =>
+        t.setValue(s.showStatusBar).onChange(async (v) => {
+          s.showStatusBar = v;
+          await this.plugin.saveSettings();
+          this.plugin.applyTriggerSettings();
+        }),
+      );
+    new Setting(containerEl)
+      .setName("Sync notifications")
+      .setDesc("Top-right notices. Errors and conflicts always show unless this is Off.")
+      .addDropdown((d) => {
+        d.addOption("quiet", "Errors & conflicts only (recommended)");
+        d.addOption("changes", "Also when files transferred");
+        d.addOption("verbose", "Every sync (verbose)");
+        d.addOption("off", "Off — status bar only");
+        d.setValue(s.syncNotices);
+        d.onChange(async (v) => {
+          s.syncNotices = v as typeof s.syncNotices;
+          await this.plugin.saveSettings();
+        });
+      });
 
     // ---- Advanced ----
     const adv = containerEl.createEl("details");

@@ -10,8 +10,20 @@
 import { generateKdfParams, deriveMasterKey, deriveSubkeys, type KdfParams } from "./crypto/keys";
 import { sealJson, openJson } from "./crypto/box";
 import { b64encode, b64decode } from "./crypto/bytes";
+import { type AutoSyncMode, isAutoSyncMode } from "./sync-scheduler";
 
 export const SETUP_FILE = "littlewooly-sync-setup.json";
+
+/** Trigger preferences as carried in a setup doc (new fields; `syncIntervalSec` = pre-0.4). */
+export interface SetupTriggers {
+  syncOnStart: boolean;
+  syncOnSave: boolean;
+  autoSyncMode: AutoSyncMode;
+  autoSyncIntervalSec: number;
+  liveIdleSec: number;
+  /** Legacy pre-0.4 export; mapped on import. */
+  syncIntervalSec?: number;
+}
 
 /** The settings surface that is exported/imported (LwsSettings is structurally this). */
 export interface SetupSettingsShape {
@@ -26,7 +38,9 @@ export interface SetupSettingsShape {
   };
   syncOnStart: boolean;
   syncOnSave: boolean;
-  syncIntervalSec: number;
+  autoSyncMode: AutoSyncMode;
+  autoSyncIntervalSec: number;
+  liveIdleSec: number;
 }
 
 export interface SetupSecretsBlock {
@@ -48,7 +62,7 @@ export interface SetupDoc {
     forcePathStyle: boolean;
     customHeaders?: Record<string, string>;
   };
-  triggers: { syncOnStart: boolean; syncOnSave: boolean; syncIntervalSec: number };
+  triggers: SetupTriggers;
   secrets: SetupSecretsBlock | null;
 }
 
@@ -101,7 +115,9 @@ export function buildSetupDoc(
     triggers: {
       syncOnStart: settings.syncOnStart,
       syncOnSave: settings.syncOnSave,
-      syncIntervalSec: settings.syncIntervalSec,
+      autoSyncMode: settings.autoSyncMode,
+      autoSyncIntervalSec: settings.autoSyncIntervalSec,
+      liveIdleSec: settings.liveIdleSec,
     },
     secrets,
   };
@@ -116,9 +132,20 @@ export function applySetupDoc(target: SetupSettingsShape, doc: SetupDoc): void {
   target.s3.bucket = doc.s3.bucket;
   target.s3.forcePathStyle = doc.s3.forcePathStyle;
   target.s3.customHeaders = doc.s3.customHeaders ? { ...doc.s3.customHeaders } : undefined;
-  target.syncOnStart = doc.triggers.syncOnStart;
-  target.syncOnSave = doc.triggers.syncOnSave;
-  target.syncIntervalSec = doc.triggers.syncIntervalSec;
+  const t = doc.triggers;
+  target.syncOnStart = t.syncOnStart;
+  target.syncOnSave = t.syncOnSave;
+  if (isAutoSyncMode(t.autoSyncMode)) {
+    target.autoSyncMode = t.autoSyncMode;
+    if (typeof t.autoSyncIntervalSec === "number")
+      target.autoSyncIntervalSec = Math.max(15, Math.floor(t.autoSyncIntervalSec));
+    if (typeof t.liveIdleSec === "number")
+      target.liveIdleSec = Math.min(300, Math.max(2, Math.floor(t.liveIdleSec)));
+  } else if (typeof t.syncIntervalSec === "number") {
+    // Pre-0.4 export: map the legacy interval the same way loadSettings does.
+    target.autoSyncMode = t.syncIntervalSec > 0 ? "periodic" : "off";
+    if (t.syncIntervalSec > 0) target.autoSyncIntervalSec = t.syncIntervalSec;
+  }
 }
 
 export function serializeSetupDoc(doc: SetupDoc): string {

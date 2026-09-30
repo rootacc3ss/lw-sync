@@ -42,20 +42,32 @@ import { Repair, type RepairResult } from "./engine/repair";
 import { runAudit } from "./engine/coverage-service";
 import type { AuditReport } from "./engine/coverage-auditor";
 import { log, logError } from "./log";
+import { type AutoSyncMode, isAutoSyncMode } from "./sync-scheduler";
 
 export const PLUGIN_ID = "littlewooly-sync";
 
 /** Persisted S3 settings: everything except the secret, which lives in SecretStorage. */
 export type LwsS3Settings = Omit<S3Config, "secretAccessKey">;
 
+/** When automatic (non-manual) sync notices appear. */
+export type SyncNoticeLevel = "quiet" | "changes" | "verbose" | "off";
+const NOTICE_LEVELS: SyncNoticeLevel[] = ["quiet", "changes", "verbose", "off"];
+
 export interface LwsSettings {
   s3: LwsS3Settings;
   vaultName: string;
   deviceName: string;
   configured: boolean;
-  syncIntervalSec: number;
   syncOnStart: boolean;
+  /** Sync shortly after files change, in any auto-sync mode. */
   syncOnSave: boolean;
+  autoSyncMode: AutoSyncMode;
+  /** periodic mode: seconds between syncs. */
+  autoSyncIntervalSec: number;
+  /** live mode: seconds of quiet after a change before syncing. */
+  liveIdleSec: number;
+  showStatusBar: boolean;
+  syncNotices: SyncNoticeLevel;
 }
 
 export const DEFAULT_SETTINGS: LwsSettings = {
@@ -69,10 +81,35 @@ export const DEFAULT_SETTINGS: LwsSettings = {
   vaultName: "",
   deviceName: "",
   configured: false,
-  syncIntervalSec: 300,
   syncOnStart: true,
   syncOnSave: true,
+  autoSyncMode: "periodic",
+  autoSyncIntervalSec: 300,
+  liveIdleSec: 5,
+  showStatusBar: true,
+  syncNotices: "quiet",
 };
+
+/**
+ * One-time migration of pre-0.4 trigger settings: `syncIntervalSec` becomes
+ * autoSyncMode/autoSyncIntervalSec. Mutates the raw persisted record in place;
+ * safe to run on every load (also unit-tested directly).
+ */
+export function migrateLegacyTriggers(raw: Record<string, unknown>): void {
+  if (typeof raw.syncIntervalSec === "number" && !isAutoSyncMode(raw.autoSyncMode)) {
+    raw.autoSyncMode = raw.syncIntervalSec > 0 ? "periodic" : "off";
+    if (raw.syncIntervalSec > 0) raw.autoSyncIntervalSec = raw.syncIntervalSec;
+  }
+  delete raw.syncIntervalSec;
+}
+
+/** Clamp/repair trigger fields after merging defaults (corrupt data never breaks sync). */
+export function sanitizeTriggers(s: LwsSettings): void {
+  if (!isAutoSyncMode(s.autoSyncMode)) s.autoSyncMode = "periodic";
+  s.autoSyncIntervalSec = Math.max(15, Math.floor(s.autoSyncIntervalSec) || 300);
+  s.liveIdleSec = Math.min(300, Math.max(2, Math.floor(s.liveIdleSec) || 5));
+  if (!(NOTICE_LEVELS as string[]).includes(s.syncNotices)) s.syncNotices = "quiet";
+}
 
 interface Stack {
   prefixed: PrefixedBackend;
