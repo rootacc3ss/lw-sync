@@ -1,12 +1,14 @@
 // First-run / connect flow: one screen of connection fields (+ Test, + import from a
-// setup file), then what's in the bucket decides: new vault -> passphrase; existing ->
-// passphrase + restore choice. Both paths end at Preferences, then a short "You're all
-// set" orientation. Custom-only by design: any S3-compatible provider works — enter
-// its endpoint/credentials and pick an addressing style; a successful connection test
-// is required before advancing, and again before finishing.
+// setup file), then the PASSPHRASE finds the vault — vault location is a random opaque
+// id, never the vault name, so discovery works by trying to open each vault with the
+// passphrase. None opens? Create one. Several? Pick. Both paths end at Preferences,
+// then a short "You're all set" orientation. Custom-only by design: any S3-compatible
+// provider works; a successful connection test is required before advancing, and again
+// before finishing.
 
 import { App, Modal, Notice, Platform, Setting } from "obsidian";
 import type { Controller, LwsSettings } from "../controller";
+import type { LocatedVault } from "../store/vault-locator";
 import { readS3Secret, writeS3Secret } from "../secrets";
 import { SETUP_FILE } from "../portability";
 import { formatHeaderLines, parseHeaderLines } from "./custom-headers";
@@ -91,7 +93,7 @@ export class SetupWizard extends Modal {
       "Bucket",
       () => settings.s3.bucket,
       (v) => (settings.s3.bucket = v),
-    );
+    ).setDesc("Every vault in this bucket lives under its own opaque id — names never appear.");
     new Setting(contentEl)
       .setName("Addressing")
       .setDesc("Path-style works with most S3-compatible providers; virtual-hosted for AWS.")
@@ -102,19 +104,11 @@ export class SetupWizard extends Modal {
         d.onChange((v) => (settings.s3.forcePathStyle = v === "path"));
       });
     text(
-      "Vault name",
-      () => settings.vaultName || this.app.vault.getName(),
-      (v) => (settings.vaultName = v),
-      "stored under lwsync/<name>/",
-    ).setDesc(
-      "Letters, numbers, dots, dashes, and underscores only — it becomes part of the S3 key prefix.",
-    );
-    text(
       "Device name",
       () => settings.deviceName,
       (v) => (settings.deviceName = v),
       "desktop / mobile / …",
-    );
+    ).setDesc("This device's name (kept out of the bucket — it lives encrypted).");
 
     new Setting(contentEl)
       .setName("Custom request headers")
@@ -138,11 +132,8 @@ export class SetupWizard extends Modal {
         return false;
       }
       try {
-        const { conditionalPut } = await this.controller.testConnection();
-        this.setTestStatus(
-          `✅ Connected to bucket${conditionalPut ? "" : " (conditional PUT ignored — manifest updates fall back to recompute)"}`,
-          true,
-        );
+        await this.controller.testConnection();
+        this.setTestStatus("✅ Connected & authenticated.", true);
         return true;
       } catch (e) {
         this.setTestStatus(`⛔ ${(e as Error).message}`, false);
@@ -160,13 +151,7 @@ export class SetupWizard extends Modal {
         .setCta()
         .onClick(async () => {
           if (!(await runTest())) return;
-          try {
-            const exists = await this.controller.remoteExists();
-            if (exists) this.renderConnectExisting();
-            else this.renderNewVault();
-          } catch (e) {
-            this.setTestStatus(`⛔ ${(e as Error).message}`, false);
-          }
+          this.renderPassphrase();
         }),
     );
   }
@@ -188,8 +173,6 @@ export class SetupWizard extends Modal {
     s.s3.accessKeyId = s.s3.accessKeyId.trim();
     s.s3.bucket = s.s3.bucket.trim();
     s.deviceName = s.deviceName.trim();
-    if (!s.vaultName) s.vaultName = this.app.vault.getName().trim();
-    else s.vaultName = s.vaultName.trim();
     const secret = readS3Secret(this.app).trim();
     if (secret) writeS3Secret(this.app, secret);
 
@@ -197,8 +180,6 @@ export class SetupWizard extends Modal {
       return "Endpoint must start with http:// or https:// (e.g. https://s3.amazonaws.com).";
     if (!s.s3.bucket) return "Bucket is required.";
     if (!s.deviceName) return "Device name is required.";
-    if (!/^[A-Za-z0-9._-]+$/.test(s.vaultName))
-      return "Vault name may only contain letters, numbers, dots, dashes, and underscores.";
     if (!/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/.test(s.s3.bucket))
       new Notice(
         "⚠ That bucket name looks unusual for S3 (lowercase letters, numbers, dots, dashes; 3–63 chars). Testing anyway.",
@@ -207,26 +188,109 @@ export class SetupWizard extends Modal {
     return null;
   }
 
-  private renderNewVault(): void {
+  /**
+   * The passphrase screen: the passphrase LOCATES the vault (each vault in the bucket
+   * is tried; the one that opens with this passphrase is yours). None opens -> create.
+   */
+  private renderPassphrase(): void {
     const { contentEl } = this;
     contentEl.empty();
-    contentEl.createEl("h2", { text: "New vault — choose an encryption passphrase" });
+    contentEl.createEl("h2", { text: "Open your vault" });
     contentEl.createEl("p", {
-      text: "This passphrase encrypts everything. There is no recovery if you lose it. Use the same passphrase on every device for this vault.",
+      text: "Enter your encryption passphrase. We'll find the vault in this bucket that opens with it — none does? You'll be able to create one.",
+      cls: "setting-item-description",
     });
     let pass = "";
-    let confirm = "";
     new Setting(contentEl).setName("Passphrase").addText((t) => {
       t.inputEl.type = "password";
       t.onChange((v) => (pass = v));
     });
+    new Setting(contentEl).addButton((b) =>
+      b
+        .setButtonText("Find my vault")
+        .setCta()
+        .onClick(async () => {
+          if (!pass) {
+            new Notice("⛔ Enter the passphrase.");
+            return;
+          }
+          let found: LocatedVault[];
+          try {
+            found = await this.controller.discoverVaults(pass);
+          } catch (e) {
+            new Notice(`⛔ ${(e as Error).message}`);
+            return;
+          }
+          if (found.length === 0) {
+            this.renderNewVault(pass);
+            return;
+          }
+          if (found.length === 1) {
+            try {
+              if (!(await this.controller.connectLocated(found[0], pass))) {
+                new Notice("⛔ Wrong passphrase.");
+                return;
+              }
+            } catch (e) {
+              new Notice(`⛔ ${(e as Error).message}`);
+              return;
+            }
+            this.renderRestoreChoice();
+            return;
+          }
+          this.renderVaultPicker(found, pass);
+        }),
+    );
+  }
+
+  /** Several vaults share this passphrase — pick which to open. */
+  private renderVaultPicker(candidates: LocatedVault[], pass: string): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("h2", { text: "Multiple vaults match" });
+    contentEl.createEl("p", {
+      text: "More than one vault in this bucket opens with that passphrase. Which is yours?",
+      cls: "setting-item-description",
+    });
+    for (const c of candidates) {
+      new Setting(contentEl)
+        .setName(c.vaultName || `vault ${c.vaultId.slice(0, 8)}…`)
+        .addButton((b) =>
+          b
+            .setButtonText("Connect")
+            .setCta()
+            .onClick(async () => {
+              try {
+                if (!(await this.controller.connectLocated(c, pass))) {
+                  new Notice("⛔ Wrong passphrase.");
+                  return;
+                }
+                this.renderRestoreChoice();
+              } catch (e) {
+                new Notice(`⛔ ${(e as Error).message}`);
+              }
+            }),
+        );
+    }
+  }
+
+  /** No vault opened with that passphrase — create a new one with it. */
+  private renderNewVault(pass: string): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("h2", { text: "New vault — confirm your passphrase" });
+    contentEl.createEl("p", {
+      text: `No vault in this bucket opens with that passphrase. Create a new encrypted vault with it? It will be labeled "${this.app.vault.getName()}" (a label only — never stored in a bucket key).`,
+      cls: "setting-item-description",
+    });
+    let confirm = "";
     new Setting(contentEl).setName("Confirm passphrase").addText((t) => {
       t.inputEl.type = "password";
       t.onChange((v) => (confirm = v));
     });
     new Setting(contentEl).addButton((b) =>
       b
-        .setButtonText("Create & start backing up")
+        .setButtonText("Create vault")
         .setCta()
         .onClick(async () => {
           if (pass.length < 8) {
@@ -245,38 +309,8 @@ export class SetupWizard extends Modal {
           }
         }),
     );
-  }
-
-  private renderConnectExisting(): void {
-    const { contentEl } = this;
-    contentEl.empty();
-    contentEl.createEl("h2", { text: "Connect to existing vault" });
-    contentEl.createEl("p", { text: "Enter the encryption passphrase you chose originally." });
-    let pass = "";
-    new Setting(contentEl).setName("Passphrase").addText((t) => {
-      t.inputEl.type = "password";
-      t.onChange((v) => (pass = v));
-    });
     new Setting(contentEl).addButton((b) =>
-      b
-        .setButtonText("Connect")
-        .setCta()
-        .onClick(async () => {
-          if (!pass) {
-            new Notice("⛔ Enter the passphrase.");
-            return;
-          }
-          try {
-            const ok = await this.controller.connectExisting(pass);
-            if (!ok) {
-              new Notice("⛔ Wrong passphrase.");
-              return;
-            }
-            this.renderRestoreChoice();
-          } catch (e) {
-            new Notice(`⛔ ${(e as Error).message}`);
-          }
-        }),
+      b.setButtonText("Back — try another passphrase").onClick(() => this.renderPassphrase()),
     );
   }
 

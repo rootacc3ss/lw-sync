@@ -33,7 +33,7 @@ function makeDevice() {
   const opts = makeClassifyOptions(defaultVaultConfig("v", "desktop"), "littlewooly-sync");
   const fs = new MemoryVaultFS(opts);
   const objects = new ObjectStore(bucket, subkeys);
-  const manifests = new ManifestStore(bucket, subkeys.manifestKey);
+  const manifests = new ManifestStore(bucket, subkeys.manifestKey, subkeys.nameKey);
   const index = new LocalIndex(new InMemoryIndexBackend());
   const engine = new SyncEngine("desktop", fs, objects, manifests, index, now);
   return { fs, objects, manifests, index, engine };

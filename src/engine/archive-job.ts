@@ -8,7 +8,9 @@
 // no tar dependency, no Buffer. Runs identically on desktop and mobile.
 
 import type { ObjectBackend } from "../store/backend";
-import { seal, open } from "../crypto/box";
+import { seal, open, sealJson, openJson } from "../crypto/box";
+import { view } from "../crypto/bytes";
+import { hmacSha256, base32 } from "../crypto/object-cipher";
 import type { Subkeys } from "../crypto/keys";
 import type { VaultFS } from "./vault-fs";
 
@@ -16,6 +18,20 @@ const SHARED_OR_DEVICE = new Set(["SHARED_CONFIG", "DEVICE_CONFIG"]);
 
 const MAGIC = new Uint8Array([0x4c, 0x57, 0x41, 0x31]); // "LWA1"
 const FLAG_GZIP = 1;
+const ARCHIVES_INDEX = "meta/archives";
+
+const enc = new TextEncoder();
+
+/** Opaque archive key for a timestamp — keyed HMAC, so timing is never in the key. */
+export async function archiveKeyFor(nameKey: Uint8Array, stamp: number): Promise<string> {
+  return `archives/${base32(await hmacSha256(nameKey, enc.encode(`lws:v1:archive:${stamp}`)))}.enc`;
+}
+
+interface ArchivesIndex {
+  schema: 1;
+  /** Ascending by stamp — the head of the list is the OLDEST. */
+  entries: { key: string; stamp: number }[];
+}
 
 interface ArchiveHeaderEntry {
   path: string;
@@ -45,9 +61,8 @@ function readU32le(b: Uint8Array, off: number): number {
 
 async function maybeGzip(data: Uint8Array): Promise<{ data: Uint8Array; gz: boolean }> {
   if (typeof CompressionStream === "undefined") return { data, gz: false };
-  const stream = new Blob([data.buffer as ArrayBuffer])
-    .stream()
-    .pipeThrough(new CompressionStream("gzip"));
+  // Blob([view]) copies just the view's bytes — never the whole underlying buffer.
+  const stream = new Blob([view(data)]).stream().pipeThrough(new CompressionStream("gzip"));
   return { data: new Uint8Array(await new Response(stream).arrayBuffer()), gz: true };
 }
 
@@ -56,9 +71,7 @@ async function maybeGunzip(data: Uint8Array, gz: boolean): Promise<Uint8Array> {
   if (typeof DecompressionStream === "undefined") {
     throw new Error("archive is gzip-compressed but this platform lacks DecompressionStream");
   }
-  const stream = new Blob([data.buffer as ArrayBuffer])
-    .stream()
-    .pipeThrough(new DecompressionStream("gzip"));
+  const stream = new Blob([view(data)]).stream().pipeThrough(new DecompressionStream("gzip"));
   return new Uint8Array(await new Response(stream).arrayBuffer());
 }
 
@@ -103,13 +116,36 @@ export class ArchiveJob {
     const { data: payload, gz } = await maybeGzip(packed);
     const blob = concatBytes([MAGIC, new Uint8Array([gz ? FLAG_GZIP : 0]), payload]);
     const sealedBlob = await seal(this.subkeys.manifestKey, blob);
-    const key = `archives/${stamp}.lwa.enc`;
+    const key = await archiveKeyFor(this.subkeys.nameKey, stamp);
     await this.backend.put(key, sealedBlob);
+
+    // Encrypted index keeps chronology (the key itself is an opaque HMAC).
+    const index = await this.readIndex();
+    index.entries.push({ key, stamp });
+    index.entries.sort((a, b) => a.stamp - b.stamp);
+    await this.writeIndex(index);
     return key;
   }
 
+  private async readIndex(): Promise<ArchivesIndex> {
+    const blob = await this.backend.get(ARCHIVES_INDEX);
+    if (!blob) return { schema: 1, entries: [] };
+    try {
+      const idx = await openJson<ArchivesIndex>(this.subkeys.manifestKey, blob);
+      return idx && Array.isArray(idx.entries) ? idx : { schema: 1, entries: [] };
+    } catch {
+      return { schema: 1, entries: [] };
+    }
+  }
+
+  private async writeIndex(index: ArchivesIndex): Promise<void> {
+    index.entries.sort((a, b) => a.stamp - b.stamp);
+    await this.backend.put(ARCHIVES_INDEX, await sealJson(this.subkeys.manifestKey, index));
+  }
+
+  /** Archive keys, oldest first (from the encrypted index). */
   async list(): Promise<string[]> {
-    return (await this.backend.list("archives/")).map((o) => o.key).sort();
+    return (await this.readIndex()).entries.map((e) => e.key);
   }
 
   /** Decrypt + decode an archive into [{path,data}] for restore. */
@@ -127,9 +163,11 @@ export class ArchiveJob {
 
   /** GFS-ish retention: keep the newest `keep` archives, delete the rest. */
   async prune(keep: number): Promise<number> {
-    const all = await this.list();
-    const toDelete = all.slice(0, Math.max(0, all.length - keep));
-    for (const k of toDelete) await this.backend.delete(k);
+    const index = await this.readIndex();
+    const toDelete = index.entries.slice(0, Math.max(0, index.entries.length - keep));
+    for (const e of toDelete) await this.backend.delete(e.key);
+    index.entries = index.entries.slice(Math.max(0, index.entries.length - keep));
+    await this.writeIndex(index);
     return toDelete.length;
   }
 }

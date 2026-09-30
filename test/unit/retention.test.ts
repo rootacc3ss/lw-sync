@@ -70,8 +70,10 @@ describe("collectPurgeable", () => {
       "gone.md": [rec({ deleted: true, objectKey: "k1", ts: NOW - THIRTY_DAYS - 5 })],
     });
     const b = manifest("mobile", {
-      "gone.md": [rec({ deleted: true, objectKey: "k1", ts: NOW - THIRTY_DAYS - 5 }),
-                  rec({ deleted: false, objectKey: "k2", ts: NOW - 10 })],
+      "gone.md": [
+        rec({ deleted: true, objectKey: "k1", ts: NOW - THIRTY_DAYS - 5 }),
+        rec({ deleted: false, objectKey: "k2", ts: NOW - 10 }),
+      ],
     });
     expect(collectPurgeable([a, b], NOW, 30)).toEqual([]);
   });
@@ -169,6 +171,8 @@ describe("applyPurge", () => {
     });
 
     expect(await applyPurge(objects, candidates, merged)).toBe(0);
-    expect(await be.get(`objects/${target.objectKey.slice(0, 2)}/${target.objectKey}`)).not.toBeNull();
+    expect(
+      await be.get(`objects/${target.objectKey.slice(0, 2)}/${target.objectKey}`),
+    ).not.toBeNull();
   });
 });

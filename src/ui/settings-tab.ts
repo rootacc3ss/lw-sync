@@ -5,7 +5,7 @@
 import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type LittleWoolySyncPlugin from "../main";
 import { formatHeaderLines, parseHeaderLines } from "./custom-headers";
-import { openExportSetupModal, openImportSetupModal } from "./modals";
+import { ConfirmModal, openExportSetupModal, openImportSetupModal } from "./modals";
 import { SETUP_FILE } from "../portability";
 
 export class LwsSettingTab extends PluginSettingTab {
@@ -39,18 +39,21 @@ export class LwsSettingTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Connection")
       .setDesc(
-        `${s.s3.bucket} @ ${s.s3.endpoint} → lwsync/${s.vaultName}/ (device: ${s.deviceName})`,
+        `${s.s3.bucket} @ ${s.s3.endpoint} → lwsync/${s.vaultId || s.vaultName}/ (vault: ${s.vaultName || "—"} · device: ${s.deviceName})`,
       )
       .addButton((b) =>
         b.setButtonText("Test").onClick(async () => {
           try {
-            const { conditionalPut } = await this.plugin.controller.testConnection();
-            new Notice("✅ Connected.");
-            if (!conditionalPut)
-              new Notice(
-                "⚠ This bucket ignores conditional create (If-None-Match); manifest updates fall back to recompute.",
-                8000,
-              );
+            await this.plugin.controller.testConnection();
+            new Notice("✅ Connected & authenticated.");
+            if (this.plugin.controller.ready) {
+              const cp = await this.plugin.controller.conditionalPut();
+              if (!cp)
+                new Notice(
+                  "⚠ This bucket ignores conditional create (If-None-Match); manifest updates fall back to recompute.",
+                  8000,
+                );
+            }
           } catch (e) {
             new Notice(`⛔ ${(e as Error).message}`);
           }
@@ -171,6 +174,45 @@ export class LwsSettingTab extends PluginSettingTab {
 
     const ctl = this.plugin.controller;
     let includeSecrets = false;
+
+    if (ctl.legacyLayout) {
+      new Setting(adv)
+        .setName("Encrypt bucket layout (migrate)")
+        .setDesc(
+          "This vault still uses the pre-0.5 layout: the vault name and device names appear in bucket keys. Migrating copies everything under a fresh random id (server-side, verified, then the old keys are deleted). Update every device to 0.5.0+ BEFORE running this — older versions won't find the vault afterwards. Re-runnable if interrupted.",
+        )
+        .addButton((b) =>
+          b
+            .setButtonText("Migrate")
+            .setCta()
+            .onClick(() => {
+              new ConfirmModal(
+                this.app,
+                "Migrate bucket layout?",
+                "Every key under lwsync/<vault name>/ is copied under a fresh random id (with device names HMAC'd out of the keys), verified, then the old keys are deleted. Nothing is re-encrypted and nothing changes in your vault. All devices must run 0.5.0+ first. Continue?",
+                async () => {
+                  try {
+                    this.plugin.setStatusOverride("🔄 Little Wooly · migrating layout…");
+                    const r = await ctl.migrateLayout();
+                    await this.plugin.saveSettings();
+                    this.plugin.renderStatus();
+                    new Notice(
+                      `✅ Migrated to the opaque layout — ${r.copied} copied, ${r.skipped} already present, ${r.deleted} old key(s) removed.`,
+                      10000,
+                    );
+                    this.display();
+                  } catch (e) {
+                    this.plugin.renderStatus();
+                    new Notice(
+                      `⛔ Migration failed (safe to re-run): ${(e as Error).message}`,
+                      10000,
+                    );
+                  }
+                },
+              ).open();
+            }),
+        );
+    }
 
     new Setting(adv)
       .setName("Deleted-file retention")

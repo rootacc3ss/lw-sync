@@ -82,6 +82,14 @@ export default class LittleWoolySyncPlugin extends Plugin {
           this.status.setOverride("⛔ Little Wooly · wrong passphrase — re-run setup");
           return;
         }
+        // Persist whatever unlock resolved (vaultId discovery, label sync).
+        await this.saveSettings();
+        if (this.controller.legacyLayout) {
+          new Notice(
+            "Little Wooly Sync: this vault still uses the pre-0.5 bucket layout — the vault name is visible in bucket keys. Migrate to the opaque layout in Settings → Advanced (update every device to 0.5.0+ first).",
+            15000,
+          );
+        }
         if (this.settings.syncOnStart) await this.runSync();
         else this.renderStatus();
       } catch (e) {
@@ -156,8 +164,14 @@ export default class LittleWoolySyncPlugin extends Plugin {
     await this.scheduler.syncNow();
   }
 
-  private renderStatus(): void {
+  /** Public for UI (settings-tab refreshes the widget after operations). */
+  renderStatus(): void {
     this.status.render(this.scheduler.statusNow(), this.settings.configured);
+  }
+
+  /** Public for UI (settings-tab feedback lines during long operations). */
+  setStatusOverride(text: string | null): void {
+    this.status.setOverride(text);
   }
 
   /** Notice policy: quiet by default — errors and conflicts always, transfers opt-in. */

@@ -27,6 +27,8 @@ export interface SetupTriggers {
 
 /** The settings surface that is exported/imported (LwsSettings is structurally this). */
 export interface SetupSettingsShape {
+  /** Random opaque vault locator (empty for legacy pre-0.5 vaults). Not a secret. */
+  vaultId: string;
   vaultName: string;
   s3: {
     endpoint: string;
@@ -53,6 +55,8 @@ export interface SetupDoc {
   schema: 1;
   app: "littlewooly-sync";
   exportedAt: string;
+  /** Random opaque vault locator (empty = legacy name-based vault). Not a secret. */
+  vaultId: string;
   vaultName: string;
   s3: {
     endpoint: string;
@@ -101,6 +105,7 @@ export function buildSetupDoc(
     schema: 1,
     app: "littlewooly-sync",
     exportedAt: new Date().toISOString(),
+    vaultId: settings.vaultId,
     vaultName: settings.vaultName,
     s3: {
       endpoint: settings.s3.endpoint,
@@ -125,6 +130,7 @@ export function buildSetupDoc(
 
 /** Apply an imported doc onto the live settings object (device name stays device-local). */
 export function applySetupDoc(target: SetupSettingsShape, doc: SetupDoc): void {
+  target.vaultId = doc.vaultId || "";
   target.vaultName = doc.vaultName;
   target.s3.endpoint = doc.s3.endpoint;
   target.s3.region = doc.s3.region;

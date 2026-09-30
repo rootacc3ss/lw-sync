@@ -10,5 +10,8 @@ export function requestUrl(_param: unknown): never {
 export const Platform = { isMobileApp: false, isDesktopApp: true };
 
 export class Notice {
-  constructor(public message: string, public timeout?: number) {}
+  constructor(
+    public message: string,
+    public timeout?: number,
+  ) {}
 }

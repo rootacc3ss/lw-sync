@@ -16,6 +16,7 @@ import {
   HeadObjectCommand,
   ListObjectsV2Command,
   DeleteObjectCommand,
+  CopyObjectCommand,
 } from "@aws-sdk/client-s3";
 import { ObjectBackend, ObjectInfo, PutOptions, PreconditionFailedError } from "./backend";
 import { ObsHttpHandler } from "./obs-http-handler";
@@ -119,6 +120,40 @@ export class S3Backend implements ObjectBackend {
 
   async delete(key: string): Promise<void> {
     await this.client.send(new DeleteObjectCommand({ Bucket: this.bucket, Key: key }));
+  }
+
+  /** Server-side copy (provider support varies — callers fall back to get+put). */
+  async copy(fromKey: string, toKey: string): Promise<void> {
+    await this.client.send(
+      new CopyObjectCommand({
+        Bucket: this.bucket,
+        Key: toKey,
+        CopySource: `${this.bucket}/${fromKey}`,
+      }),
+    );
+  }
+
+  /** Immediate child directories under `prefix` (CommonPrefixes), not recursive. */
+  async listDirs(prefix: string): Promise<string[]> {
+    const out = new Set<string>();
+    let token: string | undefined;
+    do {
+      const res = await this.client.send(
+        new ListObjectsV2Command({
+          Bucket: this.bucket,
+          Prefix: prefix,
+          Delimiter: "/",
+          ContinuationToken: token,
+        }),
+      );
+      for (const p of res.CommonPrefixes ?? []) {
+        if (!p.Prefix) continue;
+        const name = p.Prefix.slice(prefix.length).replace(/\/$/, "");
+        if (name) out.add(name);
+      }
+      token = res.IsTruncated ? res.NextContinuationToken : undefined;
+    } while (token);
+    return [...out];
   }
 
   /** Quick reachability + auth check. Throws with a useful message on failure. */

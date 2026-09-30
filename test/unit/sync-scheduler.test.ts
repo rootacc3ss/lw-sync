@@ -1,5 +1,9 @@
 import { describe, test, expect, beforeEach, afterEach, vi } from "vitest";
-import { SyncScheduler, type SchedulerConfig, type SchedulerStatus } from "../../src/sync-scheduler";
+import {
+  SyncScheduler,
+  type SchedulerConfig,
+  type SchedulerStatus,
+} from "../../src/sync-scheduler";
 import { migrateLegacyTriggers, sanitizeTriggers, DEFAULT_SETTINGS } from "../../src/controller";
 
 // The scheduler uses injected-by-default global timers, so vi.useFakeTimers()
@@ -225,7 +229,13 @@ describe("legacy trigger settings migration", () => {
   });
 
   test("sanitizeTriggers repairs corrupt values", () => {
-    const s = { ...DEFAULT_SETTINGS, autoSyncMode: "bogus" as never, syncNotices: "loud" as never, autoSyncIntervalSec: 0, liveIdleSec: 0 };
+    const s = {
+      ...DEFAULT_SETTINGS,
+      autoSyncMode: "bogus" as never,
+      syncNotices: "loud" as never,
+      autoSyncIntervalSec: 0,
+      liveIdleSec: 0,
+    };
     sanitizeTriggers(s);
     expect(s.autoSyncMode).toBe("periodic");
     expect(s.autoSyncIntervalSec).toBeGreaterThanOrEqual(15);

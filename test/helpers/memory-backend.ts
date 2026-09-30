@@ -39,4 +39,22 @@ export class MemoryBackend implements ObjectBackend {
   async delete(key: string): Promise<void> {
     this.store.delete(key);
   }
+
+  async copy(fromKey: string, toKey: string): Promise<void> {
+    const v = this.store.get(fromKey);
+    if (!v) throw new Error(`copy: source missing: ${fromKey}`);
+    this.store.set(toKey, v.slice());
+  }
+
+  async listDirs(prefix: string): Promise<string[]> {
+    const out = new Set<string>();
+    for (const key of this.store.keys()) {
+      if (!key.startsWith(prefix)) continue;
+      const rest = key.slice(prefix.length);
+      if (!rest) continue;
+      const slash = rest.indexOf("/");
+      if (slash > 0) out.add(rest.slice(0, slash));
+    }
+    return [...out];
+  }
 }

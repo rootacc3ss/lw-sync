@@ -27,7 +27,7 @@ function device(name: string) {
   const opts = makeClassifyOptions(defaultVaultConfig("v", name), "littlewooly-sync");
   const fs = new MemoryVaultFS(opts, tick);
   const objects = new ObjectStore(bucket, subkeys);
-  const manifests = new ManifestStore(bucket, subkeys.manifestKey);
+  const manifests = new ManifestStore(bucket, subkeys.manifestKey, subkeys.nameKey);
   const index = new LocalIndex(new InMemoryIndexBackend());
   const engine = new SyncEngine(name, fs, objects, manifests, index, now);
   return { fs, engine };

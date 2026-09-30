@@ -76,39 +76,34 @@ provider below (any other S3-compatible provider works too).
    S3-compatible providers; virtual-hosted is for AWS).
    The secret is stored in your device's OS-backed secret storage — never in a
    plaintext config file, never uploaded.
-3. **Vault name** (default: your vault's name) — one bucket can hold many vaults; each
-   lives under `lwsync/<vault name>/`.
-4. **Device name** — `desktop`, `laptop`, `pixel`, … — keeps each device's workspace
-   config separate. Take two seconds to make these distinct.
-5. Hit **Test connection**. You should see ✅ Connected.
-   - If you see the ⚠ *conditional create* warning: sync still works fully; the
-     warning only means the provider ignores a write-lock the manifest uses as an
-     optimization, so it falls back to recompute. No action needed.
-7. **Continue** — the plugin checks whether this bucket+vault name already has a vault:
+3. **Device name** — `desktop`, `laptop`, `pixel`, … — keeps each device's workspace
+   config separate. Take two seconds to make these distinct. (The device name never
+   appears in the bucket — it lives encrypted.)
+4. Hit **Test & continue** (reachability + auth check).
 
-**If it's a NEW vault** — choose the **encryption passphrase**:
-- This passphrase encrypts *everything*, on every device, forever. There is no
-  recovery, no reset, no backdoor — if you lose it, the backup is ciphertext.
-- Use a long, memorable phrase (a few random words). 12+ characters.
-- **Write it down somewhere safe** before continuing (password manager is ideal).
+**The passphrase finds the vault.** Vault locations in the bucket are random opaque
+ids — never names — so the wizard opens each vault candidate with your passphrase:
 
-**If it's an EXISTING vault** — enter the same passphrase you used originally, then
-choose what to restore on this device (**Everything**, or **Content only** if you want
-to leave this device's `.obsidian` settings untouched — the safe choice on a fresh
-install).
+**If nothing opens** — create a new vault: confirm the passphrase (12+ characters,
+**write it down somewhere safe**; there is no recovery), and the first backup begins.
 
-8. **Preferences**:
+**If a vault opens** — that's yours. Pick what to restore on this device
+(**Everything**, or **Content only** if you want to leave this device's `.obsidian`
+settings untouched — the safe choice on a fresh install). Several vaults share the
+passphrase? You'll pick from their (decrypted) names.
+
+5. **Preferences**:
 - *Sync on startup* — sync once when Obsidian opens (recommended).
-- *Sync on save* — sync a few seconds after you save a file (recommended).
-- *Periodic sync interval* — fallback timer, `300` seconds is a good default; `0`
-  disables it.
+- *Sync on save* — sync a few seconds after files change (recommended).
+- *Auto-sync* — **Periodic** (every N seconds; stable, lowest load, fewest S3 calls)
+  or **Live** (syncs a few seconds after you stop typing), or **Off** for manual only.
 - *Deleted-file retention* — **Keep everything forever** is the default and the
   recommendation: deleted files go to your local trash, every version stays in the
   bucket, nothing is ever purged. If you opt into a window (14/30/90 days), a file
   deleted on **every** device is eventually removed from the bucket once the window
   passes — live files and their history are never touched.
 
-9. **Start syncing** — the first sync begins.
+6. **Start syncing** — the first sync begins.
 
 ---
 
@@ -125,8 +120,8 @@ install).
    - plaintext vs stored size, and **every excluded item with its reason** (by default
      only `.git/`, `node_modules/`, `.trash/` and the plugin's own data dir)
 3. Add your **other devices**: install the plugin there, run setup with the same
-   bucket + vault name, choose **Connect existing**, same passphrase. That's it —
-   edits flow both ways (pull *and* push on every sync).
+   bucket, same passphrase. That's it — edits flow both ways (pull *and* push on
+   every sync).
 4. Optional, recommended: **Settings → Little Wooly Sync → Advanced → Create catch-all
    archive** and check **“Write debug report”** occasionally — the report is a
    plain-English summary of your sync health.

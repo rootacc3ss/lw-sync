@@ -35,7 +35,13 @@ export class PrefixedBackend implements ObjectBackend {
     const infos = await this.inner.list(this.full(prefix));
     return infos.map((i) => ({ key: this.strip(i.key), size: i.size }));
   }
+  async listDirs(prefix: string): Promise<string[]> {
+    return this.inner.listDirs(this.full(prefix));
+  }
   delete(key: string): Promise<void> {
     return this.inner.delete(this.full(key));
+  }
+  copy(fromKey: string, toKey: string): Promise<void> {
+    return this.inner.copy(this.full(fromKey), this.full(toKey));
   }
 }

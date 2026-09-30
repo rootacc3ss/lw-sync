@@ -23,7 +23,9 @@ export async function buildDebugReport(
   L("## Config");
   L(`- configured: ${settings.configured}`);
   L(`- unlocked/ready: ${controller.ready}`);
-  L(`- vaultName: ${settings.vaultName}  (prefix: lwsync/${settings.vaultName}/)`);
+  L(
+    `- vault label: ${settings.vaultName || "(none)"}  (prefix: lwsync/${settings.vaultId || settings.vaultName}/ ${settings.vaultId ? "opaque id" : "LEGACY name-based — migrate in Settings"})`,
+  );
   L(`- deviceName: ${settings.deviceName}`);
   L(`- endpoint: ${settings.s3.endpoint}`);
   L(`- bucket: ${settings.s3.bucket}`);
@@ -49,11 +51,16 @@ export async function buildDebugReport(
 
   L("## Connectivity");
   try {
-    const { conditionalPut } = await controller.testConnection();
-    L("- S3 testConnection: OK");
-    L(
-      `- conditional PUT (If-None-Match): ${conditionalPut ? "honored" : "IGNORED — manifest CAS falls back to recompute"}`,
-    );
+    await controller.testConnection();
+    L("- S3 reachability + auth: OK");
+    if (controller.ready) {
+      const cp = await controller.conditionalPut();
+      L(
+        `- conditional PUT (If-None-Match): ${cp ? "honored" : "IGNORED — manifest CAS falls back to recompute"}`,
+      );
+    } else {
+      L("- conditional PUT: (not unlocked — probed after unlock)");
+    }
   } catch (e) {
     L(`- S3 testConnection: FAILED — ${(e as Error).message}`);
   }

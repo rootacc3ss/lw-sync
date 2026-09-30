@@ -103,9 +103,7 @@ describe("auditCoverage", () => {
   });
 
   test("without referencedObjectKeys, orphan detection is skipped (no false positives)", () => {
-    const r = auditCoverage(
-      inputs({ bucketObjectKeys: new Set(["ka", "unreferenced"]) }),
-    );
+    const r = auditCoverage(inputs({ bucketObjectKeys: new Set(["ka", "unreferenced"]) }));
     expect(r.findings.ORPHAN_OBJECT).toEqual([]);
   });
 

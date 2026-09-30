@@ -20,6 +20,7 @@ function lightKdf(): KdfParams {
 
 function settings(): SetupSettingsShape {
   return {
+    vaultId: "abcdefgh234567axyz",
     vaultName: "myvault",
     s3: {
       endpoint: "https://s3.example.test",
@@ -82,7 +83,10 @@ describe("setup portability file", () => {
     expect(target.syncOnSave).toBe(false);
 
     const target2 = settings();
-    applySetupDoc(target2, parseSetupDoc(legacy.replace('"syncIntervalSec":600', '"syncIntervalSec":0')));
+    applySetupDoc(
+      target2,
+      parseSetupDoc(legacy.replace('"syncIntervalSec":600', '"syncIntervalSec":0')),
+    );
     expect(target2.autoSyncMode).toBe("off");
   });
 
@@ -126,8 +130,8 @@ describe("setup portability file", () => {
     expect(() => parseSetupDoc(JSON.stringify({ app: "other", schema: 1, s3: {} }))).toThrow(
       /not a Little Wooly Sync setup file/i,
     );
-    expect(() => parseSetupDoc(JSON.stringify({ app: "littlewooly-sync", schema: 9, s3: {} }))).toThrow(
-      /not a Little Wooly Sync setup file/i,
-    );
+    expect(() =>
+      parseSetupDoc(JSON.stringify({ app: "littlewooly-sync", schema: 9, s3: {} })),
+    ).toThrow(/not a Little Wooly Sync setup file/i);
   });
 });

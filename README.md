@@ -17,7 +17,10 @@ sync, and size caps you never asked for — so an 800 MB vault becomes a 300 MB 
 nothing tells you. This plugin exists to not do that.
 
 1. **Strong client-side encryption.** The bucket never sees plaintext — not your file
-   contents, not even your file names.
+   contents, not even your file names, your vault name, or your device names
+   (vaults live under random opaque ids; names exist only inside encrypted objects).
+   The bucket operator learns only what S3 inherently exposes: object count, sizes,
+   and timing.
 2. **Total, verifiable coverage.** Every file, folder, hidden item, any extension, any
    size. Nothing is skipped silently, and the coverage audit can prove it.
 3. **Reliable multi-device sync**, with conflicts preserved rather than resolved away.
@@ -54,23 +57,23 @@ opens a guided wizard:
 | **Access key ID** / **Secret access key** | Stored in Obsidian's OS-backed secret storage (not in plaintext `data.json`), never uploaded |
 | **Bucket** | Must already exist |
 | **Addressing** | Path-style (`host/bucket/…`) or virtual-hosted (`bucket.host/…`) |
-| **Vault name** | Data lives under `lwsync/<vault name>/`, so one bucket can hold many vaults |
 | **Device name** | `desktop`, `laptop`, … — keeps per-device config separate |
 
-Presets autofill endpoint and addressing for **AWS S3, Cloudflare R2, Wasabi, Filebase,
-iDrive e2**, and local MinIO. Any other S3-compatible provider works — just enter the
-endpoint yourself. Hit **Test connection** before continuing.
+Any S3-compatible provider works — enter its endpoint yourself (path-style addressing
+is the safe default for most). A successful connection test is required before
+continuing, and again before finishing.
 
-The wizard then branches on what it finds in the bucket:
+The wizard then asks for your **encryption passphrase** — and the passphrase *finds*
+the vault: every vault in the bucket lives under a **random opaque id** (never its
+name), and the one that opens with your passphrase is yours.
 
-- **Nothing there yet** → choose an encryption passphrase, and the first backup begins.
-- **An existing vault** → enter that vault's passphrase, then pick how to restore:
+- **Nothing opens** → confirm the passphrase and a new encrypted vault is created.
+- **A vault opens** → pick what to restore on this device:
   - **Everything** — your notes plus shared config.
   - **Content only** — just your files; this device's `.obsidian` is left untouched.
     Safest on a fresh install.
 
-Use the **same passphrase and vault name** on every device, and a **different device name**
-on each.
+Use the **same passphrase** on every device, and a **different device name** on each.
 
 > Your passphrase is the encryption key. It is never sent anywhere, and **there is no
 > recovery if you lose it.**

@@ -59,7 +59,7 @@ function device(name: string) {
   const opts = makeClassifyOptions(defaultVaultConfig("e2e", name), "littlewooly-sync");
   const fs = new MemoryVaultFS(opts);
   const objects = new ObjectStore(backend, subkeys, 4096); // small chunks to exercise chunking
-  const manifests = new ManifestStore(backend, subkeys.manifestKey);
+  const manifests = new ManifestStore(backend, subkeys.manifestKey, subkeys.nameKey);
   const index = new LocalIndex(new InMemoryIndexBackend());
   const engine = new SyncEngine(name, fs, objects, manifests, index, now);
   return { backend, fs, objects, manifests, index, engine };

@@ -107,3 +107,39 @@ export function openImportSetupModal(
     },
   }).open();
 }
+
+/** A plain confirmation modal (destructive-ish actions, mobile-safe — no window.confirm). */
+export class ConfirmModal extends Modal {
+  constructor(
+    app: App,
+    title: string,
+    body: string,
+    private onYes: () => void | Promise<void>,
+    yesText = "Continue",
+  ) {
+    super(app);
+    this.title = title;
+    this.body = body;
+    this.yesText = yesText;
+  }
+  private title: string;
+  private body: string;
+  private yesText: string;
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.empty();
+    contentEl.createEl("h2", { text: this.title });
+    contentEl.createEl("p", { text: this.body, cls: "setting-item-description" });
+    new Setting(contentEl).addButton((b) =>
+      b
+        .setButtonText(this.yesText)
+        .setCta()
+        .onClick(async () => {
+          this.close();
+          await this.onYes();
+        }),
+    );
+    new Setting(contentEl).addButton((b) => b.setButtonText("Cancel").onClick(() => this.close()));
+  }
+}
